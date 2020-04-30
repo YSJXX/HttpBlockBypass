@@ -27,7 +27,7 @@ bool check_fnc(u_char *buf)
 
 
     if(ip_header->protocol == TCP &&
-            ((ntohs(tcp_header->source) == 80) || ntohs(tcp_header->source) == 443 ))
+            ((ntohs(tcp_header->source) == 80) || (ntohs(tcp_header->source) == 443) || (ntohs(tcp_header->dest) == 80) || (ntohs(tcp_header->dest) == 443) ))
     {
         uint8_t rst[8];
         uint8_t flag=tcp_header->th_flags;
@@ -56,7 +56,7 @@ bool check_fnc(u_char *buf)
 
         if(rst[2]==1)
         {
-            printf("###############|| TEST ||##############\n");
+            printf("###############|| Drop  ||##############\n");
             cout<<'\n';
             cout<<"-----------------------------------------n";
             *rst = (uint8_t)NULL;
@@ -143,7 +143,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
     uint32_t id = print_pkt(nfa);
     printf("entering callback\n");
-    if(ck) nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
+    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
     else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL); //NF_ACCEPT -> NF_DROP 차단
 
 
