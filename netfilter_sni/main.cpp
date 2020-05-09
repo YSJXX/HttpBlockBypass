@@ -9,6 +9,10 @@
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+
+//packet division include pcap
+#include <pcap.h>
+#include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
@@ -18,7 +22,8 @@ using namespace std;
 static bool ck;
 
 //1st RST packet Drop
-bool check_fnc(u_char *buf)
+/*
+bool check_fnc(u_char *buf,int id)
 {
     struct iphdr * ip_header =(struct iphdr *)buf;
     struct tcphdr * tcp_header = (struct tcphdr *)(buf + (ip_header->ihl*4) );
@@ -66,10 +71,26 @@ bool check_fnc(u_char *buf)
         flag=(uint8_t)NULL;
     }
 
+
     return false;
 }
+*/
 
-/* returns packet id */
+//packet division
+bool pkt_division(u_char* buf)
+{
+    struct iphdr * ip_header =(struct iphdr *)buf;
+    struct tcphdr * tcp_header = (struct tcphdr *)(buf + (ip_header->ihl*4) );
+    u_char * http = (u_char *)tcp_header + (tcp_header->th_off*4); // next data 32
+
+    //Check sum 계산
+    uint16_t addchecksum= ip_header->;
+    cout<<"기존 ip checksum: "<<ip_header->check<<'\n';
+    cout<<"코드 ip checksum: "<<
+
+
+}
+    /* returns packet id */
 static uint32_t print_pkt (struct nfq_data *tb)
 {
     int id = 0;
@@ -128,8 +149,9 @@ static uint32_t print_pkt (struct nfq_data *tb)
     ret = nfq_get_payload(tb, &data);
     if (ret >= 0)
     {
-        //        printf("payload_len=%d ", ret);
-        ck = check_fnc(data);
+//        printf("payload_len=%d ", ret);
+//        ck = check_fnc(data,id);
+        ck = pkt_division(data);
     }
 
     fputc('\n', stdout);
@@ -143,8 +165,8 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
     uint32_t id = print_pkt(nfa);
     printf("entering callback\n");
-    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
-    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL); //NF_ACCEPT -> NF_DROP 차단
+    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr);
+    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
 
 
 }
