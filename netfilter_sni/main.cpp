@@ -16,10 +16,14 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
+#include "division.cpp"
+
 #define TCP 0x06
 
 using namespace std;
 static bool ck;
+
+bool pkt_division(u_char* buf);
 
 //1st RST packet Drop
 /*
@@ -76,20 +80,7 @@ bool check_fnc(u_char *buf,int id)
 }
 */
 
-//packet division
-bool pkt_division(u_char* buf)
-{
-    struct iphdr * ip_header =(struct iphdr *)buf;
-    struct tcphdr * tcp_header = (struct tcphdr *)(buf + (ip_header->ihl*4) );
-    u_char * http = (u_char *)tcp_header + (tcp_header->th_off*4); // next data 32
 
-    //Check sum 계산
-    uint16_t addchecksum= ip_header->;
-    cout<<"기존 ip checksum: "<<ip_header->check<<'\n';
-    cout<<"코드 ip checksum: "<<
-
-
-}
     /* returns packet id */
 static uint32_t print_pkt (struct nfq_data *tb)
 {
@@ -151,7 +142,7 @@ static uint32_t print_pkt (struct nfq_data *tb)
     {
 //        printf("payload_len=%d ", ret);
 //        ck = check_fnc(data,id);
-        ck = pkt_division(data);
+        main2(data);
     }
 
     fputc('\n', stdout);
@@ -165,9 +156,9 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
     uint32_t id = print_pkt(nfa);
     printf("entering callback\n");
-    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr);
-    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
-
+//    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr);
+//    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
+    return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
 
 }
 
@@ -179,6 +170,7 @@ int main(int argc, char **argv)
     int rv;
     uint32_t queue = 0;
     char buf[4096] __attribute__ ((aligned));
+
 
     if (argc == 2) {
         queue = atoi(argv[1]);

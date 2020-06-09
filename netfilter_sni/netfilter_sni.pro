@@ -5,4 +5,5 @@ CONFIG -= qt
 LIBS += -lnetfilter_queue
 LIBS += -lpcap
 SOURCES += \
+        division.cpp \
         main.cpp
