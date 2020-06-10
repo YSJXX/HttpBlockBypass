@@ -5,5 +5,9 @@ CONFIG -= qt
 LIBS += -lnetfilter_queue
 LIBS += -lpcap
 SOURCES += \
+        calchecksum.cpp \
         division.cpp \
         main.cpp
+
+HEADERS += \
+    calchecksum.h

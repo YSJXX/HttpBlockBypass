@@ -7,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-
+#include "calchecksum.h"
 
 
 using namespace std;
@@ -32,7 +32,6 @@ void division_packet(u_char *packet)
     u_char *iptcp_temp = static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len)));//header 길이만큼 할당.
     iptcp_temp = packet;
     int tcp_segment_len = ntohs(iphdr->tot_len) - iptcp_len;
-
 
     int i=0;
     bool fst=true;
@@ -117,10 +116,13 @@ void division_packet(u_char *packet)
 
 void sendto_packet(u_char *packet,int packet_len)
 {
-    //    cout<<"size check : "<<sizeof(packet)<<'\n';
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
+//    uint16_t tcp_len= (ntohs(iphdr->tot_len)-(iphdr->ihl*4));
 
+
+
+//    tcphdr->check = calTCPChecksum(packet,ntohs(iphdr->tot_len));
     /*
             cout<<"PROTOCOL: "<<dec<<iphdr->protocol<<'\n';
             cout<<"Source IP: "<<hex<<iphdr->saddr<<'\n';
@@ -167,31 +169,49 @@ void sendto_packet(u_char *packet,int packet_len)
 
     ssize_t res = sendto(sockd,packet,static_cast<size_t>(packet_len),0x0,
                          reinterpret_cast<struct sockaddr*>(&mysocket),sizeof(mysocket));
-    //packet_len - 1 하는 이유는 뒤에 0이 하나 더 붙어서.
     if(res != static_cast<ssize_t>(packet_len)){
         perror("error sendto\n");
         exit(1);
     }
-//    int c = close(sockd);
-//    if(c<0)
-//    {
-//        perror("error close socket\n");
-//        exit(1);
-//    }
+    int c = close(sockd);
+    if(c<0)
+    {
+        perror("error close socket\n");
+        exit(1);
+    }
 
 }
 void main2(u_char *packet)
 {
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+iphdr->ihl*4);
-//    struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
+
     int data_len = ntohs(iphdr->tot_len) - iphdr->ihl*4 - tcphdr->doff*4;
-    if(true){
+    cout<<'\n';
+    struct sockaddr_in sock,sock2;
+    sock.sin_addr.s_addr =iphdr->saddr;
+    sock2.sin_addr.s_addr =iphdr->daddr;
+    cout<<"IP header Len: "<<iphdr->ihl*4<<'\n';
+    cout<<"Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
+    cout<<"Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
+    cout<<"TCP header Len: "<<tcphdr->doff*4<<'\n';
+    cout<<"Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
+    cout<<"Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
+    cout<<"TOT len: "<<ntohs(iphdr->tot_len)<<'\n';
+    cout<<"TCP segment len: "<<data_len<<'\n';
+
+
+    if(data_len>0){
+        cout<<"yes tcp_segment\n";
+        sleep(1);
         division_packet(packet);
     }
     else{
+        cout<<"no tcp_segment\n";
+        sleep(1);
         sendto_packet(packet,ntohs(iphdr->tot_len));
     }
+    cout<<"---------------------------------------------------------\n";
 }
 /*
 int main()

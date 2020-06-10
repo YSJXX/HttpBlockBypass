@@ -137,13 +137,13 @@ static uint32_t print_pkt (struct nfq_data *tb)
     if (ret > 0)
         printf("secctx=\"%.*s\" ", ret, secdata);
 
-    ret = nfq_get_payload(tb, &data);
-    if (ret >= 0)
-    {
-//        printf("payload_len=%d ", ret);
-//        ck = check_fnc(data,id);
-        main2(data);
-    }
+//    ret = nfq_get_payload(tb, &data);
+//    if (ret >= 0)
+//    {
+////        printf("payload_len=%d ", ret);
+////        ck = check_fnc(data,id);
+//        main2(data);
+//    }
 
     fputc('\n', stdout);
 
@@ -154,11 +154,18 @@ static uint32_t print_pkt (struct nfq_data *tb)
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
               struct nfq_data *nfa, void *data)
 {
+    unsigned char *datas;
     uint32_t id = print_pkt(nfa);
+    if(nfq_get_payload(nfa,&datas) <=0)
+    {
+        main2(datas);
+    }
+
     printf("entering callback\n");
 //    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr);
 //    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
     return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
+//    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
 
 }
 
