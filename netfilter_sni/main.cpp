@@ -10,8 +10,6 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 
-//packet division include pcap
-#include <pcap.h>
 #include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -21,65 +19,11 @@
 #define TCP 0x06
 
 using namespace std;
-static bool ck;
+
+static bool drop_check;
+static map<uint16_t,int>map_id;
 
 bool pkt_division(u_char* buf);
-
-//1st RST packet Drop
-/*
-bool check_fnc(u_char *buf,int id)
-{
-    struct iphdr * ip_header =(struct iphdr *)buf;
-    struct tcphdr * tcp_header = (struct tcphdr *)(buf + (ip_header->ihl*4) );
-    //    u_char * http = (u_char *)tcp_header + (tcp_header->th_off*4); // next data 32
-
-
-
-    if(ip_header->protocol == TCP &&
-            ((ntohs(tcp_header->source) == 80) || (ntohs(tcp_header->source) == 443) || (ntohs(tcp_header->dest) == 80) || (ntohs(tcp_header->dest) == 443) ))
-    {
-        uint8_t rst[8];
-        uint8_t flag=tcp_header->th_flags;
-        int i;
-
-        cout<<'\n';
-        cout<<"-----------------------------------------\n";
-
-        cout<<"ip Check Sum: "<<hex<<ntohs(ip_header->check)<<'\n';
-        printf("flag: 0x%x \n",tcp_header->th_flags);
-
-        for(i=0;0<flag;i++)
-        {
-            rst[i]=flag%2;
-            flag=flag/2;
-        }
-
-        cout<<"2진수: ";
-        for(int x=i-1;x>=0;x--)
-        {
-            printf("%d ",rst[x]);
-        }
-        cout<<'\n';
-
-
-
-        if(rst[2]==1)
-        {
-            printf("###############|| Drop  ||##############\n");
-            cout<<'\n';
-            cout<<"-----------------------------------------n";
-            *rst = (uint8_t)NULL;
-            return true;
-        }
-        cout<<"-----------------------------------------n";
-        flag=(uint8_t)NULL;
-    }
-
-
-    return false;
-}
-*/
-
 
     /* returns packet id */
 static uint32_t print_pkt (struct nfq_data *tb)
@@ -137,13 +81,13 @@ static uint32_t print_pkt (struct nfq_data *tb)
     if (ret > 0)
         printf("secctx=\"%.*s\" ", ret, secdata);
 
-//    ret = nfq_get_payload(tb, &data);
-//    if (ret >= 0)
-//    {
-////        printf("payload_len=%d ", ret);
-////        ck = check_fnc(data,id);
-//        main2(data);
-//    }
+    ret = nfq_get_payload(tb, &data);
+    if (ret >= 0)
+    {
+//        printf("payload_len=%d ", ret);
+//        ck = check_fnc(data,id);
+        drop_check = main2(data);
+    }
 
     fputc('\n', stdout);
 
@@ -154,18 +98,12 @@ static uint32_t print_pkt (struct nfq_data *tb)
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
               struct nfq_data *nfa, void *data)
 {
-    unsigned char *datas;
     uint32_t id = print_pkt(nfa);
-    if(nfq_get_payload(nfa,&datas) <=0)
-    {
-        main2(datas);
-    }
-
     printf("entering callback\n");
-//    if(ck) return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr);
-//    else return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
-    return nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
-//    return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
+    if(!drop_check)
+        int res = nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
+    else
+        return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
 
 }
 

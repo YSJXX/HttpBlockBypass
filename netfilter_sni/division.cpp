@@ -9,13 +9,18 @@
 #include <arpa/inet.h>
 #include "calchecksum.h"
 
+#include <map>
+#include <algorithm>
+#include "main.cpp"
 
 using namespace std;
+
+
 
 bool check_host();
 void division_packet(u_char *packet);
 void sendto_packet(u_char *packet,int packet_len);
-void main2(u_char *packet);
+bool main2(u_char *packet);
 
 bool check_host(u_char *packet)
 {
@@ -36,9 +41,11 @@ void division_packet(u_char *packet)
     int i=0;
     bool fst=true;
     bool send=true;
-    int remainter_segment=0;
+    int remainter_segment=tcp_segment_len -1; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
+    cout<<"before while\n";
     while(send)
     {
+        cout<<"#################        [+] error checking               #################\n";
         u_char *assemble;
         if(fst)     //처음 보내는 패킷과 두번째 보내는 패킷의 사이즈가 달라서 if 를 사용함.
             assemble=static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len+1)));
@@ -55,8 +62,8 @@ void division_packet(u_char *packet)
             {
                 if(fst){        //여기선 1byte만 먼저 보낸다.
                     assemble[i]=packet[i];
-                    remainter_segment = tcp_segment_len -1;         //남은 segment 구하기.
-                    cout<<'\n'<<"-------------------------| | |------\n";
+                    //                    remainter_segment = tcp_segment_len -1;         //남은 segment 구하기.
+                    cout<<'\n'<<"-------------------------첫번째 분할 if ------\n";
                     cout<<"Segment full len: "<<tcp_segment_len<<'\n';
                     cout<<"remainter len: "<<remainter_segment<<'\n';
                     //                    cout<<"Source IP: "<<hex<<iphdr->saddr<<'\n';
@@ -77,7 +84,7 @@ void division_packet(u_char *packet)
                     //                    cout<<iptcp_len<<'\n';
                     //                    for(int a=0;a<=i;a++)
                     //                        printf("cnt:%d :: %02x\n",a+1,assemble[a]);
-                    //                    sleep(10);
+                    //                    sleep(10);째
                     //                    i=0;
                     //                    break;
                 }
@@ -85,8 +92,9 @@ void division_packet(u_char *packet)
                     if((i-iptcp_len) < remainter_segment)   // -iptcp_len 하는 이유는 i 값이 iptcp header의 길이 만큼 들어가 있어서.
                         assemble[i]=packet[i+1];        // +1 하는해 이유는 첫 패킷에서 1byte 먼저 보냈으니 그 자리를 비워주기 위해
                     else{
+                        cout<<'\n'<<"-------------------------두번째 분할 전송------\n";
                         struct tcphdr * as_tcphdr = reinterpret_cast<struct tcphdr*>(assemble+(iphdr->ihl*4));
-                        as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + 1);
+                        as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + 1);  //첫번째 에서 1byte 보냈으니
                         sendto_packet(assemble,iptcp_len+remainter_segment);
                         send=false;
                         break;
@@ -101,28 +109,24 @@ void division_packet(u_char *packet)
 
                 }
             }
-            else if(tcp_segment_len==0){
-                sendto_packet(assemble,iptcp_len);
-                send=false;
-                break;
-            }
             i++;
         }
         free(assemble);
     }
+    cout<<"끝:==================================================================\n";
     cout<<"\n";
-    cout<<"------test------------------------------------------------\n";
 }
 
 void sendto_packet(u_char *packet,int packet_len)
 {
+    cout<<"[##] Packet Len: "<<packet_len<<"[sendto packet func]"<<'\n';
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
-//    uint16_t tcp_len= (ntohs(iphdr->tot_len)-(iphdr->ihl*4));
+    //    uint16_t tcp_len= (ntohs(iphdr->tot_len)-(iphdr->ihl*4));
 
 
 
-//    tcphdr->check = calTCPChecksum(packet,ntohs(iphdr->tot_len));
+    //    tcphdr->check = calTCPChecksum(packet,ntohs(iphdr->tot_len));
     /*
             cout<<"PROTOCOL: "<<dec<<iphdr->protocol<<'\n';
             cout<<"Source IP: "<<hex<<iphdr->saddr<<'\n';
@@ -160,15 +164,16 @@ void sendto_packet(u_char *packet,int packet_len)
         perror("error setsockopt\n");
     }
 
-    //    iphdr->saddr = inet_addr("192.168.123.101");
+    //    iphdr->saddr = inet_addr("192.168.199.183");
     daddr.s_addr = iphdr->daddr;    //sockaddr_in 의 목적지 주소를 패킷의 목적지 주소로 맞추기.
     mysocket.sin_addr = daddr;
     mysocket.sin_family=AF_INET;
     mysocket.sin_port = tcphdr->dest;
-//    mysocket.sin_addr.s_addr = inet_addr("127.0.0.1");      //일단 loop back으로 패킷 확인인
+    //    mysocket.sin_addr.s_addr = inet_addr("127.0.0.1");      //일단 loop back으로 패킷 확인인
 
     ssize_t res = sendto(sockd,packet,static_cast<size_t>(packet_len),0x0,
                          reinterpret_cast<struct sockaddr*>(&mysocket),sizeof(mysocket));
+
     if(res != static_cast<ssize_t>(packet_len)){
         perror("error sendto\n");
         exit(1);
@@ -181,8 +186,11 @@ void sendto_packet(u_char *packet,int packet_len)
     }
 
 }
-void main2(u_char *packet)
+bool main2(u_char *packet)
 {
+
+    cout<<"[############################] 패킷 발견\n";
+
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+iphdr->ihl*4);
 
@@ -200,18 +208,35 @@ void main2(u_char *packet)
     cout<<"TOT len: "<<ntohs(iphdr->tot_len)<<'\n';
     cout<<"TCP segment len: "<<data_len<<'\n';
 
+    cout<<"iphdr ID: "<<ntohs(iphdr->id)<<'\n';
 
-    if(data_len>0){
-        cout<<"yes tcp_segment\n";
-        sleep(1);
-        division_packet(packet);
+    cout<<"map 원소 개수: "<<map_id.size()<<'\n';
+
+
+    map<uint16_t,int>::iterator iter = map_id.find(iphdr->id);
+
+
+    if(iter != map_id.end()){//map에 id 저장 유무 확인.
+        cout<<"[##] 저장된 패킷 입니다.\n";
+        if(iter->second == 0)
+            map_id.erase(iter);
+
+        iter->second-=1;
+        return true;
     }
-    else{
-        cout<<"no tcp_segment\n";
-        sleep(1);
-        sendto_packet(packet,ntohs(iphdr->tot_len));
+    else{   //map에
+        if(data_len>0){   //tcp segment length compare
+            //        cout<<"yes tcp_segment\n";
+            //        sleep(1);
+            cout<<"[##] tcp segment 값 발견.\n";
+            map_id[iphdr->id]=2;
+            division_packet(packet);
+        }
+        else //패킷에 tcp segment 가 겂을 때
+            return true;
+
+        cout<<"---------------------------------------------------------\n";
     }
-    cout<<"---------------------------------------------------------\n";
 }
 /*
 int main()
