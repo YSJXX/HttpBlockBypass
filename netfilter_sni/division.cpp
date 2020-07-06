@@ -1,32 +1,18 @@
-#include <iostream>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <netinet/ether.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include "calchecksum.h"
-
-#include <map>
-#include <algorithm>
-#include "main.cpp"
+#include "header.h"
 
 using namespace std;
 
+static map<uint16_t,int>map_id;
 
-
-bool check_host();
 void division_packet(u_char *packet);
 void sendto_packet(u_char *packet,int packet_len);
 bool main2(u_char *packet);
 
-bool check_host(u_char *packet)
-{
-    //host,sni 유해사이트 유무 판단.
-    return true;
-}
+//bool check_host(u_char *packet)
+//{
+//    //host,sni 유해사이트 유무 판단.
+//    return true;
+//}
 
 void division_packet(u_char *packet)
 {
@@ -237,6 +223,7 @@ bool main2(u_char *packet)
 
         cout<<"---------------------------------------------------------\n";
     }
+    return false;
 }
 /*
 int main()

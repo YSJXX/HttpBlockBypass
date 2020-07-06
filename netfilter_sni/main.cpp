@@ -1,27 +1,10 @@
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <linux/types.h>
-#include <linux/netfilter.h>		/* for NF_ACCEPT */
-#include <errno.h>
-
-#include <libnetfilter_queue/libnetfilter_queue.h>
-
-
-#include <netinet/ether.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-
+#include "header.h"
 #include "division.cpp"
-
-#define TCP 0x06
 
 using namespace std;
 
 static bool drop_check;
-static map<uint16_t,int>map_id;
+
 
 bool pkt_division(u_char* buf);
 
