@@ -83,7 +83,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
     uint32_t id = print_pkt(nfa);
     printf("entering callback\n");
-    if(!drop_check)
+    if(!drop_check) //참이면 통과.
         int res = nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
     else
         return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
