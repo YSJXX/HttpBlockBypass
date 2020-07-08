@@ -1,147 +1,215 @@
 #include <iostream>
-#include <pcap.h>
-#include <net/ethernet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <linux/types.h>
+#include <linux/netfilter.h>		/* for NF_ACCEPT */
+#include <errno.h>
+
+#include <libnetfilter_queue/libnetfilter_queue.h>
+
+
+#include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 
-#include <unistd.h>
-#define BUFFSIZE 1024
+#include "division.cpp"
+
 #define TCP 0x06
+
 using namespace std;
 
-# define TH_FIN	0x01
-# define TH_SYN	0x02
-# define TH_RST 0x04
-# define TH_PUSH 0x08
-# define TH_ACK	0x10
-# define TH_URG	0x20
+static bool drop_check;
+static map<uint16_t,int>map_id;
 
-//RST packet drop
-//int main()
+bool pkt_division(u_char* buf);
+
+    /* returns packet id */
+static uint32_t print_pkt (struct nfq_data *tb)
 {
-    char errbuf[PCAP_ERRBUF_SIZE];
-    pcap_t *handle = pcap_open_live("eth0",BUFFSIZE,1,100,errbuf);
-    struct pcap_pkthdr * header;
-    const u_char *packet;
+    int id = 0;
+    struct nfqnl_msg_packet_hdr *ph;
+    struct nfqnl_msg_packet_hw *hwph;
+    uint32_t mark, ifi, uid, gid;
+    int ret;
+    unsigned char *data, *secdata;
 
-    while(true){
-        int rs = pcap_next_ex(handle,&header,&packet);
-        if(!rs) continue;
+    ph = nfq_get_msg_packet_hdr(tb);
+    if (ph) {
+        id = ntohl(ph->packet_id);
+        printf("hw_protocol=0x%04x hook=%u id=%u ",
+               ntohs(ph->hw_protocol), ph->hook, id);
+    }
 
-        if(rs ==-1 || rs==-2)
-        {
-            cout<<"pcap_next_ex:: error\n";
-            break;
-        }
+    hwph = nfq_get_packet_hw(tb);
+    if (hwph) {
+        int i, hlen = ntohs(hwph->hw_addrlen);
 
-        //        struct ether_header *eth_hdr = reinterpret_cast<struct ether_header*>((uint8_t*)packet);
-        struct ether_header * eth_hdr = (struct ether_header*)((uint8_t*)packet);
-        struct iphdr *ip_hdr = (struct iphdr *)(packet+14);
-        struct tcphdr * tcp_hdr = (struct tcphdr *)(packet+14+(ip_hdr->ihl*4));
-        //        struct iphdr *ip_hdr = reinterpret_cast<struct iphdr *>(eth_hdr+14);
-        //        struct tcphdr * tcp_hdr = reinterpret_cast<struct tcphdr *>(ip_hdr+ip_hdr->ihl*4);
-        if(eth_hdr->ether_type == ntohs(0x0800))
-        {
+        printf("hw_src_addr=");
+        for (i = 0; i < hlen-1; i++)
+            printf("%02x:", hwph->hw_addr[i]);
+        printf("%02x ", hwph->hw_addr[hlen-1]);
+    }
 
-            //            cout<<"eth_type: "<<hex<<eth_hdr->ether_type<<'\n';
-            //            cout<<"ip length: "<<dec<<ip_hdr->ihl<<'\n';
-            //            cout<<"ip version: "<<dec<<ip_hdr->version<<'\n';
-            //            cout<<"ip Differentiated Services Field: "<<hex<<ip_hdr->tos<<'\n';
-            //            cout<<"ip Total length: "<<dec<<ntohs(ip_hdr->tot_len)<<'\n';
-            //            cout<<"ip ID: "<<hex<<ntohs(ip_hdr->id)<<'\n';
-            //            cout<<"ip Flag: "<<hex<<ntohs(ip_hdr->frag_off)<<'\n';
-            //            cout<<"ip ttl: "<<dec<<ip_hdr->ttl<<'\n';
-            //            printf("ip protocol: %d\n",ip_hdr->protocol);
-            //            //            cout<<"ip protocol: "<<dec<<ip_hdr->protocol<<'\n';
-            //            cout<<"ip Check Sum: "<<hex<<ntohs(ip_hdr->check)<<'\n';
-            //            printf("tcp dest: %x \n",ntohs(tcp_hdr->dest));
-            //            cout<<"--------------------------\n";
+    mark = nfq_get_nfmark(tb);
+    if (mark)
+        printf("mark=%u ", mark);
 
-            //            struct iphdr * test = (struct iphdr *)(eth_hdr+14);
-            //            printf("packet:     %p\n",packet);
-            //            printf("eth_hdr:    %p\n",eth_hdr);
-            //            printf("packet+14:  %p \n",ip_hdr);
-            //            printf("eth_hdr+14: %p\n",test);
-            //            sleep(10000);
-            if(ip_hdr->protocol == TCP && ((ntohs(tcp_hdr->dest) || ntohs(tcp_hdr->source) == 80) || (ntohs(tcp_hdr->dest) || ntohs(tcp_hdr->source) ==443)))
-            {
-                uint8_t rst[8];
-                uint8_t flag=tcp_hdr->th_flags;
-                int i;
+    ifi = nfq_get_indev(tb);
+    if (ifi)
+        printf("indev=%u ", ifi);
+
+    ifi = nfq_get_outdev(tb);
+    if (ifi)
+        printf("outdev=%u ", ifi);
+    ifi = nfq_get_physindev(tb);
+    if (ifi)
+        printf("physindev=%u ", ifi);
+
+    ifi = nfq_get_physoutdev(tb);
+    if (ifi)
+        printf("physoutdev=%u ", ifi);
+
+    if (nfq_get_uid(tb, &uid))
+        printf("uid=%u ", uid);
+
+    if (nfq_get_gid(tb, &gid))
+        printf("gid=%u ", gid);
+
+    ret = nfq_get_secctx(tb, &secdata);
+    if (ret > 0)
+        printf("secctx=\"%.*s\" ", ret, secdata);
+
+    ret = nfq_get_payload(tb, &data);
+    if (ret >= 0)
+    {
+//        printf("payload_len=%d ", ret);
+//        ck = check_fnc(data,id);
+        drop_check = main2(data);
+    }
+
+    fputc('\n', stdout);
+
+    return id;
+}
 
 
-                cout<<"ip Check Sum: "<<hex<<ntohs(ip_hdr->check)<<'\n';
-                printf("flag: 0x%x \n",flag);
+static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
+              struct nfq_data *nfa, void *data)
+{
+    uint32_t id = print_pkt(nfa);
+    printf("entering callback\n");
+    if(!drop_check)
+        int res = nfq_set_verdict(qh, id, NF_DROP, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
+    else
+        return nfq_set_verdict(qh, id, NF_ACCEPT, 0, nullptr); //NF_ACCEPT -> NF_DROP 차단
 
-                for(i=0;0<flag;i++)
-                {
-                    rst[i]=flag%2;
-                    flag=flag/2;
-                }
+}
 
-                cout<<"2진수: ";
-                for(int x=i-1;x>=0;x--)
-                {
-                    printf("%d ",rst[x]);
-                }
-                cout<<'\n';
+int main(int argc, char **argv)
+{
+    struct nfq_handle *h;
+    struct nfq_q_handle *qh;
+    int fd;
+    int rv;
+    uint32_t queue = 0;
+    char buf[4096] __attribute__ ((aligned));
 
-                if(rst[2]==1)
-                {
-                    cout<<"$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ || rst packet ||\n";
-                    sleep(5);
-                }
-                cout<<"--------------------------\n";
-                //                cout<<"모든 검열에 통과\n";
-                //                sleep(1000);
-            }
+
+    if (argc == 2) {
+        queue = atoi(argv[1]);
+        if (queue > 65535) {
+            fprintf(stderr, "Usage: %s [<0-65535>]\n", argv[0]);
+            exit(EXIT_FAILURE);
         }
     }
 
-    return 0;
+    printf("opening library handle\n");
+    h = nfq_open();
+    if (!h) {
+        fprintf(stderr, "error during nfq_open()\n");
+        exit(1);
+    }
+
+    printf("unbinding existing nf_queue handler for AF_INET (if any)\n");
+    if (nfq_unbind_pf(h, AF_INET) < 0) {
+        fprintf(stderr, "error during nfq_unbind_pf()\n");
+        exit(1);
+    }
+
+    printf("binding nfnetlink_queue as nf_queue handler for AF_INET\n");
+    if (nfq_bind_pf(h, AF_INET) < 0) {
+        fprintf(stderr, "error during nfq_bind_pf()\n");
+        exit(1);
+    }
+
+
+    //#################################################################
+    printf("binding this socket to queue '%d'\n", queue);
+    qh = nfq_create_queue(h, queue, &cb, NULL);
+    if (!qh) {
+        fprintf(stderr, "error during nfq_create_queue()\n");
+        exit(1);
+    }
+    //#################################################################
+
+
+    printf("setting copy_packet mode\n");
+    if (nfq_set_mode(qh, NFQNL_COPY_PACKET, 0xffff) < 0) {
+        fprintf(stderr, "can't set packet_copy mode\n");
+        exit(1);
+    }
+
+    printf("setting flags to request UID and GID\n");
+    if (nfq_set_queue_flags(qh, NFQA_CFG_F_UID_GID, NFQA_CFG_F_UID_GID)) {
+        fprintf(stderr, "This kernel version does not allow to "
+                        "retrieve process UID/GID.\n");
+    }
+
+    printf("setting flags to request security context\n");
+    if (nfq_set_queue_flags(qh, NFQA_CFG_F_SECCTX, NFQA_CFG_F_SECCTX)) {
+        fprintf(stderr, "This kernel version does not allow to "
+                        "retrieve security context.\n");
+    }
+
+    printf("Waiting for packets...\n");
+
+    fd = nfq_fd(h);
+
+    for (;;) {
+        if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
+            printf("pkt received\n");
+            nfq_handle_packet(h, buf, rv);
+            continue;
+        }
+        /* if your application is too slow to digest the packets that
+         * are sent from kernel-space, the socket buffer that we use
+         * to enqueue packets may fill up returning ENOBUFS. Depending
+         * on your application, this error may be ignored. Please, see
+         * the doxygen documentation of this library on how to improve
+         * this situation.
+         */
+        if (rv < 0 && errno == ENOBUFS) {
+            printf("losing packets!\n");
+            continue;
+        }
+        perror("recv failed");
+        break;
+    }
+
+    printf("unbinding from queue 0\n");
+    nfq_destroy_queue(qh);
+
+#ifdef INSANE
+    /* normally, applications SHOULD NOT issue this command, since
+     * it detaches other programs/sockets from AF_INET, too ! */
+    printf("unbinding from AF_INET\n");
+    nfq_unbind_pf(h, AF_INET);
+#endif
+
+    printf("closing library handle\n");
+    nfq_close(h);
+
+    exit(0);
 }
-
-int main()
-{
-    "\x08\x5d\xdd\x79\xff\x05\x38\xf9\xd3\x19\x65\xe2\x08\x00\x45\x00" \
-    "\x02\x39\x00\x00\x40\x00\x40\x06\x49\xa5\xc0\xa8\x7b\x67\x11\xf8" \
-    "\xa1\x12\xc7\xd9\x01\xbb\x40\xc1\x94\x2e\xa5\xe2\x1e\x04\x80\x18" \
-    "\x08\x0a\xe0\xca\x00\x00\x01\x01\x08\x0a\x3b\xde\x76\xbe\xcc\xa9" \
-    "\x55\x2c\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03\x03\x38\xbe\xc6" \
-    "\xe2\xad\xa9\xff\x1e\x85\x7f\x47\x15\x2a\xcf\xe6\xdb\x7d\x9c\x0c" \
-    "\x92\x51\xd1\x1e\x22\xc1\xaa\x08\xc7\x06\xc7\xc6\x6f\x20\xb9\x3f" \
-    "\xec\x59\x9c\xd4\x39\x34\xb1\xec\x6d\xeb\xfa\x50\x16\x53\xd5\xc2" \
-    "\xe1\x93\x42\xc3\x5d\xd9\x9e\xa9\x02\xaf\x19\x5e\xec\xe5\x00\x34" \
-    "\x13\x01\x13\x02\x13\x03\xc0\x2c\xc0\x2b\xc0\x24\xc0\x23\xc0\x0a" \
-    "\xc0\x09\xcc\xa9\xc0\x30\xc0\x2f\xc0\x28\xc0\x27\xc0\x14\xc0\x13" \
-    "\xcc\xa8\x00\x9d\x00\x9c\x00\x3d\x00\x3c\x00\x35\x00\x2f\xc0\x08" \
-    "\xc0\x12\x00\x0a\x01\x00\x01\x7f\xff\x01\x00\x01\x00\x00\x00\x00" \
-    "\x1c\x00\x1a\x00\x00\x17\x70\x36\x32\x2d\x63\x6f\x6e\x74\x61\x63" \
-    "\x74\x73\x2e\x69\x63\x6c\x6f\x75\x64\x2e\x63\x6f\x6d\x00\x17\x00" \
-    "\x00\x00\x0d\x00\x18\x00\x16\x04\x03\x08\x04\x04\x01\x05\x03\x02" \
-    "\x03\x08\x05\x08\x05\x05\x01\x08\x06\x06\x01\x02\x01\x00\x05\x00" \
-    "\x05\x01\x00\x00\x00\x00\x00\x12\x00\x00\x00\x10\x00\x0b\x00\x09" \
-    "\x08\x68\x74\x74\x70\x2f\x31\x2e\x31\x00\x0b\x00\x02\x01\x00\x00" \
-    "\x33\x00\x26\x00\x24\x00\x1d\x00\x20\x8f\x32\x9c\x85\xb2\xff\xd2" \
-    "\x8b\xc3\x67\x30\xc9\x85\x48\x1c\xf7\xff\x11\x5f\x95\xd7\x31\x38" \
-    "\x9b\xf2\xb9\x1c\xe4\xee\x19\x1f\x3c\x00\x2d\x00\x02\x01\x01\x00" \
-    "\x2b\x00\x09\x08\x03\x04\x03\x03\x03\x02\x03\x01\x00\x0a\x00\x0a" \
-    "\x00\x08\x00\x1d\x00\x17\x00\x18\x00\x19\x00\x15\x00\xc9\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" \
-    "\x00\x00\x00\x00\x00\x00\x00"
-
-
-    return 0;
-}
-
