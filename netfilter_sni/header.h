@@ -19,7 +19,6 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include <algorithm>
 #include <map>
-#include "calchecksum.h"
 
 #define TCP 0x06
 #endif // HEADER_H

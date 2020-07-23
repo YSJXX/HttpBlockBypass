@@ -9,12 +9,6 @@ void division_packet(u_char *packet);
 void sendto_packet(u_char *packet,int packet_len);
 bool main2(u_char *packet);
 
-//bool check_host(u_char *packet)
-//{
-//    //host,sni 유해사이트 유무 판단.
-//    return true;
-//}
-
 void division_packet(u_char *packet)
 {
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
@@ -28,17 +22,23 @@ void division_packet(u_char *packet)
     int i=0;
     bool fst=true;
     bool send=true;
-    int remainter_segment=tcp_segment_len -1; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
+    int first_packet_len = 16; //패킷 쪼개서 보낼 때 길이를 유동적으로 입력하기 위해 변수로 설정
+    if(tcp_segment_len < 16)    //segment 길이가 16보다 작으면 첫번째 패킷 분할 길이를 1으로 설정
+        first_packet_len = 1;
+
+    //fst pck len
+    int remainter_segment=tcp_segment_len -first_packet_len; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
     while(send)
     {
         cout<<"#################        [+] error checking               #################\n";
         u_char *assemble;
         if(fst)     //처음 보내는 패킷과 두번째 보내는 패킷의 사이즈가 달라서 if 를 사용함.
-            assemble=static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len+1)));
+            assemble=static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len+first_packet_len)));     //fst pck len
         else
             assemble=static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len+remainter_segment)));
-        //        printf("%02x\n",static_cast<u_char>(packet[i]));
 
+        struct iphdr * as_ip = reinterpret_cast<struct iphdr*>(assemble);
+        struct tcphdr * as_tcphdr = reinterpret_cast<struct tcphdr*>(assemble+(iphdr->ihl*4));
         while(true)
         {
             if(i<iptcp_len){
@@ -48,31 +48,38 @@ void division_packet(u_char *packet)
             {
                 if(fst){        //여기선 1byte만 먼저 보낸다.
                     assemble[i]=packet[i];
-                    //                    remainter_segment = tcp_segment_len -1;         //남은 segment 구하기.
-                    cout<<'\n'<<"[#]첫번째 분할 if ------\n";
-                    cout<<"[#]Segment full len: "<<tcp_segment_len<<'\n';
-                    cout<<"[#]remainter len: "<<remainter_segment<<'\n';
-                    struct sockaddr_in sock,sock2;
-                    sock.sin_addr.s_addr =iphdr->saddr;
-                    sock2.sin_addr.s_addr =iphdr->daddr;
-                    cout<<"[#]Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
-                    cout<<"[#]Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
-                    cout<<"[#]Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
-                    cout<<"[#]Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
-                    sendto_packet(assemble,iptcp_len+1);
-                    i=0;
-                    fst=false;
-                    break;
+                    if(i-iptcp_len == first_packet_len)          //fst pck len
+                    {
+                        //                    remainter_segment = tcp_segment_len -1;         //남은 segment 구하기.
+                        cout<<'\n'<<"[#]첫번째 분할 if ------\n";
+                        cout<<"[#]Segment full len: "<<tcp_segment_len<<'\n';
+                        cout<<"[#]remainter len: "<<remainter_segment<<'\n';
+                        struct sockaddr_in sock,sock2;
+                        sock.sin_addr.s_addr =iphdr->saddr;
+                        sock2.sin_addr.s_addr =iphdr->daddr;
+                        cout<<"[#]Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
+                        cout<<"[#]Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
+                        cout<<"[#]Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
+                        cout<<"[#]Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
+                        cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+                        as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+first_packet_len);
+                        cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+                        sendto_packet(assemble,iptcp_len+first_packet_len);        //fst pck len
+                        i=0;
+                        fst=false;
+                        break;
+                    }
                 }
                 else{   //sequence number 더하기
                     if((i-iptcp_len) < remainter_segment)   // -iptcp_len 하는 이유는 i 값이 iptcp header의 길이 만큼 들어가 있어서.
-                        assemble[i]=packet[i+1];        // +1 하는해 이유는 첫 패킷에서 1byte 먼저 보냈으니 그 자리를 비워주기 위해
+                        assemble[i]=packet[i+first_packet_len];        // +1 하는해 이유는 첫 패킷에서 1byte 먼저 보냈으니 그 자리를 비워주기 위해
                     else{
                         cout<<'\n'<<"[#]두번째 분할 전송------\n";
-                        struct iphdr * as_ip = reinterpret_cast<struct iphdr*>(assemble);
                         as_ip->id=htons(ntohs(as_ip->id)+1);
-                        struct tcphdr * as_tcphdr = reinterpret_cast<struct tcphdr*>(assemble+(iphdr->ihl*4));
-                        as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + 1);  //첫번째 에서 1byte 보냈으니
+                        as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + static_cast<uint16_t>(first_packet_len)); //fst pck len  //첫번째 에서 1byte 보냈으니
+                        cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+                        as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+remainter_segment);
+                        cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
                         sendto_packet(assemble,iptcp_len+remainter_segment);
                         send=false;
                         break;
