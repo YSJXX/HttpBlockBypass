@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
+#include <string.h> //memcpy
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 #include <algorithm>

@@ -8,6 +8,12 @@ static map<uint16_t,int>map_id;
 void division_packet(u_char *packet);
 void sendto_packet(u_char *packet,int packet_len);
 bool main2(u_char *packet);
+void debug_func();
+
+void debug_func()
+{
+    cout<<"[#][#][#] debuging .... [#][#][#][#][#]\n";
+}
 
 void division_packet(u_char *packet)
 {
@@ -27,11 +33,12 @@ void division_packet(u_char *packet)
         first_packet_len = 1;
 
     //fst pck len
-    int remainter_segment=tcp_segment_len -first_packet_len; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
+    int remainter_segment = tcp_segment_len - first_packet_len; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
     while(send)
     {
         cout<<"#################        [+] error checking               #################\n";
         u_char *assemble;
+
         if(fst)     //처음 보내는 패킷과 두번째 보내는 패킷의 사이즈가 달라서 if 를 사용함.
             assemble=static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len+first_packet_len)));     //fst pck len
         else
@@ -39,57 +46,29 @@ void division_packet(u_char *packet)
 
         struct iphdr * as_ip = reinterpret_cast<struct iphdr*>(assemble);
         struct tcphdr * as_tcphdr = reinterpret_cast<struct tcphdr*>(assemble+(iphdr->ihl*4));
-        while(true)
-        {
-            if(i<iptcp_len){
-                assemble[i]=packet[i];
-            }
-            else if(tcp_segment_len >0)
-            {
-                if(fst){        //여기선 1byte만 먼저 보낸다.
-                    assemble[i]=packet[i];
-                    if(i-iptcp_len == first_packet_len)          //fst pck len
-                    {
-                        //                    remainter_segment = tcp_segment_len -1;         //남은 segment 구하기.
-                        cout<<'\n'<<"[#]첫번째 분할 if ------\n";
-                        cout<<"[#]Segment full len: "<<tcp_segment_len<<'\n';
-                        cout<<"[#]remainter len: "<<remainter_segment<<'\n';
-                        struct sockaddr_in sock,sock2;
-                        sock.sin_addr.s_addr =iphdr->saddr;
-                        sock2.sin_addr.s_addr =iphdr->daddr;
-                        cout<<"[#]Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
-                        cout<<"[#]Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
-                        cout<<"[#]Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
-                        cout<<"[#]Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
-                        cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
-                        as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+first_packet_len);
-                        cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
-                        sendto_packet(assemble,iptcp_len+first_packet_len);        //fst pck len
-                        i=0;
-                        fst=false;
-                        break;
-                    }
-                }
-                else{   //sequence number 더하기
-                    if((i-iptcp_len) < remainter_segment)   // -iptcp_len 하는 이유는 i 값이 iptcp header의 길이 만큼 들어가 있어서.
-                        assemble[i]=packet[i+first_packet_len];        // +1 하는해 이유는 첫 패킷에서 1byte 먼저 보냈으니 그 자리를 비워주기 위해
-                    else{
-                        cout<<'\n'<<"[#]두번째 분할 전송------\n";
-                        as_ip->id=htons(ntohs(as_ip->id)+1);
-                        as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + static_cast<uint16_t>(first_packet_len)); //fst pck len  //첫번째 에서 1byte 보냈으니
-                        cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
-                        as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+remainter_segment);
-                        cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
-                        sendto_packet(assemble,iptcp_len+remainter_segment);
-                        send=false;
-                        break;
-                    }
-
-                }
-            }
-            i++;
+        //--------- memcpy test
+        memcpy(assemble,packet,static_cast<size_t>(iptcp_len)); // iptcp 길이 만큼 복사
+        if(fst){
+            memcpy(assemble+iptcp_len,packet+iptcp_len,static_cast<size_t>(first_packet_len));    //first packet len 만큼 복사해서 전
+            as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+first_packet_len);
+            sendto_packet(assemble,iptcp_len+first_packet_len);        //fst pck len
+            fst=false;
+            free(assemble);
         }
-        free(assemble);
+        else{
+            // memcpy(시작위치 + iptcp 길이, packet의 시작위치 + iptcp 길이 + 첫번째로 전송한 패킷의 길이 , 남은 패킷 길이만큼)
+            memcpy(assemble+iptcp_len,packet+iptcp_len+first_packet_len,static_cast<size_t>(remainter_segment));
+            cout<<'\n'<<"[#]두번째 분할 전송------\n";
+            as_ip->id=htons(ntohs(as_ip->id)+1);
+            as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + static_cast<uint16_t>(first_packet_len)); //fst pck len  //첫번째 에서 1byte 보냈으니
+            cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+            as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+remainter_segment);
+            cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+            sendto_packet(assemble,iptcp_len+remainter_segment);
+            free(assemble);
+            send=false;
+            break;
+        }
     }
     cout<<"[#] 분할 전송 끝\n";
     cout<<"\n";
@@ -98,8 +77,10 @@ void division_packet(u_char *packet)
 void sendto_packet(u_char *packet,int packet_len)
 {
     cout<<"[##] Packet Len: "<<packet_len<<"[sendto packet func]"<<'\n';
+
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
+
     //    uint16_t tcp_len= (ntohs(iphdr->tot_len)-(iphdr->ihl*4));
 
 
@@ -153,7 +134,6 @@ bool main2(u_char *packet)
 {
 
     cout<<"\n[############################] 패킷 발견\n";
-
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+iphdr->ihl*4);
 
