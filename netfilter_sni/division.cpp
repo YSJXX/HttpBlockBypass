@@ -21,22 +21,20 @@ void division_packet(u_char *packet)
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
 
     int iptcp_len = (iphdr->ihl*4) + (tcphdr->doff*4);
-    u_char *iptcp_temp = static_cast<u_char*>(malloc(static_cast<size_t>(iptcp_len)));//header 길이만큼 할당.
-    iptcp_temp = packet;
     int tcp_segment_len = ntohs(iphdr->tot_len) - iptcp_len;
 
-    int i=0;
     bool fst=true;
     bool send=true;
     int first_packet_len = 16; //패킷 쪼개서 보낼 때 길이를 유동적으로 입력하기 위해 변수로 설정
     if(tcp_segment_len < 16)    //segment 길이가 16보다 작으면 첫번째 패킷 분할 길이를 1으로 설정
         first_packet_len = 1;
+    //    int first_packet_len = static_cast<int>(tcp_segment_len*0.2);
+
 
     //fst pck len
     int remainter_segment = tcp_segment_len - first_packet_len; // 코드를 패킷을 한개만 우선 보내는 것 위주로 짜여져서 혹시라도 나중에 바뀐다면 다시 짜야함...
     while(send)
     {
-        cout<<"#################        [+] error checking               #################\n";
         u_char *assemble;
 
         if(fst)     //처음 보내는 패킷과 두번째 보내는 패킷의 사이즈가 달라서 if 를 사용함.
@@ -58,25 +56,25 @@ void division_packet(u_char *packet)
         else{
             // memcpy(시작위치 + iptcp 길이, packet의 시작위치 + iptcp 길이 + 첫번째로 전송한 패킷의 길이 , 남은 패킷 길이만큼)
             memcpy(assemble+iptcp_len,packet+iptcp_len+first_packet_len,static_cast<size_t>(remainter_segment));
-            cout<<'\n'<<"[#]두번째 분할 전송------\n";
+            cout<<'\n'<<"[division_packet]두번째 분할 전송------\n";
             as_ip->id=htons(ntohs(as_ip->id)+1);
             as_tcphdr->seq = htonl(ntohl(as_tcphdr->seq) + static_cast<uint16_t>(first_packet_len)); //fst pck len  //첫번째 에서 1byte 보냈으니
-            cout<<"[#]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+            cout<<"[division_packet]before checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
             as_tcphdr->check=calTCPChecksum(reinterpret_cast<u_char*>(as_ip),iptcp_len+remainter_segment);
-            cout<<"[#]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
+            cout<<"[division_packet]after checksum: "<<hex<<ntohs(as_tcphdr->check)<<'\n';
             sendto_packet(assemble,iptcp_len+remainter_segment);
             free(assemble);
             send=false;
             break;
         }
     }
-    cout<<"[#] 분할 전송 끝\n";
+    cout<<"[division_packet] 분할 전송 끝\n";
     cout<<"\n";
 }
 
 void sendto_packet(u_char *packet,int packet_len)
 {
-    cout<<"[##] Packet Len: "<<packet_len<<"[sendto packet func]"<<'\n';
+    cout<<"[sendto_packet] Packet Len: "<<packet_len<<'\n';
 
     struct iphdr * iphdr = reinterpret_cast<struct iphdr*>(packet);
     struct tcphdr * tcphdr = reinterpret_cast<struct tcphdr*>(packet+(iphdr->ihl*4));
@@ -142,18 +140,23 @@ bool main2(u_char *packet)
     struct sockaddr_in sock,sock2;
     sock.sin_addr.s_addr =iphdr->saddr;
     sock2.sin_addr.s_addr =iphdr->daddr;
-    cout<<"[#]IP header Len: "<<iphdr->ihl*4<<'\n';
-    cout<<"[#]Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
-    cout<<"[#]Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
-    cout<<"[#]TCP header Len: "<<tcphdr->doff*4<<'\n';
-    cout<<"[#]Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
-    cout<<"[#]Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
-    cout<<"[#]TOT len: "<<ntohs(iphdr->tot_len)<<'\n';
-    cout<<"[#]TCP segment len: "<<data_len<<'\n';
+    cout<<"[main2]IP header Len: "<<iphdr->ihl*4<<'\n';
+    cout<<"[main2]Source IP: "<<inet_ntoa(sock.sin_addr)<<'\n';
+    cout<<"[main2]Destination IP: "<<inet_ntoa(sock2.sin_addr)<<'\n';
+    cout<<"[main2]TCP header Len: "<<tcphdr->doff*4<<'\n';
+    cout<<"[main2]Sport: "<<dec<<ntohs(tcphdr->source)<<'\n';
+    cout<<"[main2]Dport: "<<dec<<ntohs(tcphdr->dest)<<'\n';
+    cout<<"[main2]TOT len: "<<ntohs(iphdr->tot_len)<<'\n';
+    cout<<"[main2]TCP segment len: "<<data_len<<'\n';
 
-    cout<<"[#]iphdr ID: "<<ntohs(iphdr->id)<<'\n';
+    cout<<"[main2]iphdr ID: "<<ntohs(iphdr->id)<<'\n';
 
-    cout<<"[#]map 원소 개수: "<<map_id.size()<<'\n';
+    cout<<"[main2]map 원소 개수: "<<map_id.size()<<'\n';
+    if(map_id.size() > 500) // 원소갯수 지우기기
+    {
+        map<uint16_t,int>::iterator it = map_id.begin();
+        for(int i=0; i < static_cast<int>(map_id.size())*0.8;++i) map_id.erase(it++);
+    }
 
 
     map<uint16_t,int>::iterator iter = map_id.find(iphdr->id);
