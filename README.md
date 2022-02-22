@@ -62,3 +62,12 @@ host name정보를 가지고 있는 패킷을 분할하기 위해 Tcp Segment �
 > 4. 분할된 Tcp Segment에 맞춰 tcp header의 Sequence Number, Checksum값을 바꿔줍니다. 
 > 5. 분할되어 변경된 정보를 가진 패킷을 raw Socket을 사용해 전송합니다.
 > (헤더 정보를 수정하기 위해 raw Socket 사용)
+
+
+## 프로젝트 진행을 위해 추가로 공부한 내용
+- IPS/IDS
+- iptables 명령어
+- TCP 필드(Sequence Number, CheckSum)
+- nfqnl_test.c 코드 분석(libnetfilter_queue)
+- MTU (Packet Reassemble)
+- raw Socket
